@@ -1,0 +1,59 @@
+"app.name" = "ccAwake";
+"status.inactive" = "Inactive";
+"status.sessionReadFailed" = "Session read failed";
+"status.blockedOnBattery" = "Blocked on battery";
+"status.manualKeepAwake" = "Manual keep awake";
+"status.claudeActive" = "Claude active";
+"status.automationPaused" = "Automation paused";
+"status.restoringSleep" = "Restoring normal sleep";
+"status.alreadyNormal" = "Already normal sleep";
+
+"menu.status" = "ccAwake: %@";
+"menu.sleepDisabled" = "Sleep Disabled";
+"menu.sleepNormal" = "Sleep Normal";
+"menu.pauseAutomation" = "Pause Claude Automation";
+"menu.resumeAutomation" = "Resume Claude Automation";
+"menu.manualOn" = "Manual Keep Awake: On";
+"menu.manualOff" = "Manual Keep Awake: Off";
+"menu.turnOffNow" = "Restore Normal Sleep Now";
+"menu.timeout" = "Timeout: %@";
+"menu.customTimeout" = "Custom...";
+"menu.powerPolicyBattery" = "Power Policy: AC or Battery";
+"menu.powerPolicyAC" = "Power Policy: AC Only";
+"menu.onlyPowerAdapter" = "Only on Power Adapter";
+"menu.allowBattery" = "Allow on Battery";
+"menu.launchAtLoginOn" = "Launch at Login: On";
+"menu.launchAtLoginOff" = "Launch at Login: Off";
+"menu.launchAtLoginApproval" = "Approve Launch at Login in System Settings...";
+"menu.installHooks" = "Install Claude Hooks";
+"menu.uninstallHooks" = "Uninstall Claude Hooks";
+"menu.quit" = "Quit ccAwake";
+"menu.approveHelper" = "Approve Helper in System Settings...";
+"menu.helperInstalling" = "Helper Installing...";
+"menu.helperNotFound" = "Helper Not Found; using password fallback";
+
+"tooltip.status" = "ccAwake - %@";
+"timeout.minutes" = "%d minutes";
+"timeout.never" = "Never";
+
+"alert.customTimeout.title" = "Custom Timeout";
+"alert.customTimeout.message" = "Enter a timeout in minutes. Use 0 for Never.";
+"button.save" = "Save";
+"button.cancel" = "Cancel";
+"button.ok" = "OK";
+
+"error.loadSettings" = "ccAwake could not load settings.";
+"error.changeSleepState" = "ccAwake could not change sleep state.";
+"error.installHooks" = "ccAwake could not install Claude hooks.";
+"error.uninstallHooks" = "ccAwake could not uninstall Claude hooks.";
+"error.saveSettings" = "ccAwake could not save settings.";
+"error.launchAtLogin" = "ccAwake could not update launch at login.";
+"error.hookNotFound" = "Could not find ccawake-hook next to the app executable. Build the app with scripts/build-app.sh.";
+
+"helper.unavailable" = "ccAwake's privileged helper is not approved yet.";
+"helper.connectionFailed" = "Could not connect to ccAwake helper: %@";
+"helper.castFailed" = "Could not cast remote proxy.";
+
+"power.pmsetFailedStatus" = "pmset failed with exit status %d.";
+"power.pmsetFailedMessage" = "pmset failed with exit status %d: %@";
+"power.launchFailed" = "Could not launch power command: %@";

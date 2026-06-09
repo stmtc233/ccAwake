@@ -1,0 +1,59 @@
+"app.name" = "ccAwake";
+"status.inactive" = "未启用";
+"status.sessionReadFailed" = "读取会话失败";
+"status.blockedOnBattery" = "电池供电时已阻止";
+"status.manualKeepAwake" = "手动保持唤醒";
+"status.claudeActive" = "Claude 正在运行";
+"status.automationPaused" = "自动化已暂停";
+"status.restoringSleep" = "正在恢复正常休眠";
+"status.alreadyNormal" = "已经是正常休眠";
+
+"menu.status" = "ccAwake：%@";
+"menu.sleepDisabled" = "已阻止休眠";
+"menu.sleepNormal" = "正常休眠";
+"menu.pauseAutomation" = "暂停 Claude 自动化";
+"menu.resumeAutomation" = "恢复 Claude 自动化";
+"menu.manualOn" = "手动保持唤醒：开";
+"menu.manualOff" = "手动保持唤醒：关";
+"menu.turnOffNow" = "立即恢复正常休眠";
+"menu.timeout" = "超时：%@";
+"menu.customTimeout" = "自定义...";
+"menu.powerPolicyBattery" = "电源策略：电源适配器或电池";
+"menu.powerPolicyAC" = "电源策略：仅电源适配器";
+"menu.onlyPowerAdapter" = "仅连接电源适配器时";
+"menu.allowBattery" = "允许电池供电";
+"menu.launchAtLoginOn" = "开机自启动：开";
+"menu.launchAtLoginOff" = "开机自启动：关";
+"menu.launchAtLoginApproval" = "在系统设置中批准开机自启动...";
+"menu.installHooks" = "安装 Claude Hooks";
+"menu.uninstallHooks" = "卸载 Claude Hooks";
+"menu.quit" = "退出 ccAwake";
+"menu.approveHelper" = "在系统设置中批准 Helper...";
+"menu.helperInstalling" = "正在安装 Helper...";
+"menu.helperNotFound" = "未找到 Helper；将使用密码兜底";
+
+"tooltip.status" = "ccAwake - %@";
+"timeout.minutes" = "%d 分钟";
+"timeout.never" = "永不";
+
+"alert.customTimeout.title" = "自定义超时";
+"alert.customTimeout.message" = "输入超时时间（分钟）。输入 0 表示永不超时。";
+"button.save" = "保存";
+"button.cancel" = "取消";
+"button.ok" = "好";
+
+"error.loadSettings" = "ccAwake 无法加载设置。";
+"error.changeSleepState" = "ccAwake 无法切换休眠状态。";
+"error.installHooks" = "ccAwake 无法安装 Claude hooks。";
+"error.uninstallHooks" = "ccAwake 无法卸载 Claude hooks。";
+"error.saveSettings" = "ccAwake 无法保存设置。";
+"error.launchAtLogin" = "ccAwake 无法更新开机自启动。";
+"error.hookNotFound" = "未在 App 可执行文件旁找到 ccawake-hook。请使用 scripts/build-app.sh 构建 App。";
+
+"helper.unavailable" = "ccAwake 的特权 Helper 尚未批准。";
+"helper.connectionFailed" = "无法连接 ccAwake Helper：%@";
+"helper.castFailed" = "无法转换远程代理。";
+
+"power.pmsetFailedStatus" = "pmset 失败，退出状态 %d。";
+"power.pmsetFailedMessage" = "pmset 失败，退出状态 %d：%@";
+"power.launchFailed" = "无法启动电源命令：%@";

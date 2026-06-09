@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-test:
+    name: Build and Test
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Show toolchain
+        run: |
+          swift --version
+          xcodebuild -version
+
+      - name: Run tests
+        run: swift test
+
+      - name: Validate localization files
+        run: |
+          plutil -lint \
+            Resources/en.lproj/Localizable.strings \
+            Resources/zh-Hans.lproj/Localizable.strings \
+            Resources/en.lproj/InfoPlist.strings \
+            Resources/zh-Hans.lproj/InfoPlist.strings
+
+      - name: Build app bundle
+        run: sh scripts/build-app.sh
+
+      - name: Verify app bundle
+        run: |
+          test -x .build/ccAwake.app/Contents/MacOS/ccAwake
+          test -x .build/ccAwake.app/Contents/MacOS/ccawake-hook
+          test -x .build/ccAwake.app/Contents/MacOS/com.stmtc.ccAwake.Helper
+          test -f .build/ccAwake.app/Contents/Library/LaunchDaemons/com.stmtc.ccAwake.Helper.plist
+          test -f .build/ccAwake.app/Contents/Resources/en.lproj/Localizable.strings
+          test -f .build/ccAwake.app/Contents/Resources/zh-Hans.lproj/Localizable.strings

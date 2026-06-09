@@ -1,0 +1,78 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing release tag, for example v0.1.0"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  build-release:
+    name: Build Release
+    runs-on: macos-latest
+    env:
+      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Checkout selected tag
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          git fetch --tags
+          git checkout "$RELEASE_TAG"
+
+      - name: Show toolchain
+        run: |
+          swift --version
+          xcodebuild -version
+
+      - name: Run tests
+        run: swift test
+
+      - name: Build app bundle
+        run: sh scripts/build-app.sh
+
+      - name: Package app
+        run: |
+          ARTIFACT_DIR=".build/release-artifacts"
+          ZIP_PATH="$ARTIFACT_DIR/ccAwake-$RELEASE_TAG.app.zip"
+          SHA_PATH="$ZIP_PATH.sha256"
+
+          mkdir -p "$ARTIFACT_DIR"
+          ditto -c -k --sequesterRsrc --keepParent .build/ccAwake.app "$ZIP_PATH"
+          shasum -a 256 "$ZIP_PATH" > "$SHA_PATH"
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ccAwake-${{ env.RELEASE_TAG }}
+          path: .build/release-artifacts/*
+
+      - name: Create or update GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ZIP_PATH=".build/release-artifacts/ccAwake-$RELEASE_TAG.app.zip"
+          SHA_PATH="$ZIP_PATH.sha256"
+
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" "$ZIP_PATH" "$SHA_PATH" --clobber
+          else
+            gh release create "$RELEASE_TAG" "$ZIP_PATH" "$SHA_PATH" \
+              --title "ccAwake $RELEASE_TAG" \
+              --generate-notes
+          fi
