@@ -62,3 +62,42 @@ enum ClamshellReader {
         return nil
     }
 }
+
+enum SleepDisabledReader {
+    static func isSleepDisabled() -> Bool? {
+        guard let output = CommandReader.read(
+            executable: "/usr/sbin/ioreg",
+            arguments: ["-r", "-k", "SleepDisabled", "-d", "4"]
+        ) else {
+            return nil
+        }
+
+        if output.contains("\"SleepDisabled\" = Yes") {
+            return true
+        }
+        if output.contains("\"SleepDisabled\" = No") {
+            return false
+        }
+        return nil
+    }
+
+    static func verify(
+        expected: Bool,
+        attempts: Int = 6,
+        interval: TimeInterval = 0.25,
+        completion: @escaping @Sendable (Bool) -> Void
+    ) {
+        DispatchQueue.global(qos: .utility).async {
+            for attempt in 0..<attempts {
+                if isSleepDisabled() == expected {
+                    completion(true)
+                    return
+                }
+                if attempt + 1 < attempts {
+                    Thread.sleep(forTimeInterval: interval)
+                }
+            }
+            completion(false)
+        }
+    }
+}

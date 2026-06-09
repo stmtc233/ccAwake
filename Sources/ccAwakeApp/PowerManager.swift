@@ -30,7 +30,12 @@ final class PowerManager {
             helper.setSleepDisabled(disabled) { [weak self] result in
                 switch result {
                 case .success:
-                    completion(.success(()))
+                    Task { @MainActor in
+                        self?.completeAfterVerifyingSleepDisabled(
+                            disabled,
+                            completion: completion
+                        )
+                    }
                 case .failure:
                     Task { @MainActor in
                         self?.setSleepDisabledViaOsascript(disabled, completion: completion)
@@ -39,6 +44,22 @@ final class PowerManager {
             }
         } else {
             setSleepDisabledViaOsascript(disabled, completion: completion)
+        }
+    }
+
+    private func completeAfterVerifyingSleepDisabled(
+        _ disabled: Bool,
+        completion: @escaping @Sendable (Result<Void, Error>) -> Void
+    ) {
+        SleepDisabledReader.verify(expected: disabled) { [weak self] matches in
+            if matches {
+                completion(.success(()))
+                return
+            }
+
+            Task { @MainActor in
+                self?.setSleepDisabledViaOsascript(disabled, completion: completion)
+            }
         }
     }
 
