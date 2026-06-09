@@ -16,7 +16,7 @@
     <string>APPL</string>
     <key>SMAuthorizedClients</key>
     <array>
-        <string>identifier "com.stmtc.ccAwake"</string>
+        <string>identifier "com.stmtc.ccAwake" and anchor apple generic and certificate leaf[subject.OU] = "5A75X6L3A4"</string>
     </array>
 </dict>
 </plist>

@@ -43,8 +43,65 @@ jobs:
       - name: Run tests
         run: swift test
 
+      - name: Import signing certificate
+        id: signing
+        env:
+          DEVELOPER_ID_P12_BASE64: ${{ secrets.DEVELOPER_ID_P12_BASE64 }}
+          DEVELOPER_ID_P12_PASSWORD: ${{ secrets.DEVELOPER_ID_P12_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: |
+          if [ -z "$DEVELOPER_ID_P12_BASE64" ]; then
+            echo "No signing secrets configured; building ad-hoc (not distributable)." >&2
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          KEYCHAIN_PATH="$RUNNER_TEMP/ccawake-signing.keychain-db"
+          CERT_PATH="$RUNNER_TEMP/developer-id.p12"
+
+          echo "$DEVELOPER_ID_P12_BASE64" | base64 --decode > "$CERT_PATH"
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$CERT_PATH" -P "$DEVELOPER_ID_P12_PASSWORD" \
+            -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH" >/dev/null
+          security list-keychain -d user -s "$KEYCHAIN_PATH" $(security list-keychains -d user | tr -d '"')
+
+          IDENTITY=$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" \
+            | grep "Developer ID Application" | head -1 | sed -E 's/.*"(.*)"/\1/')
+          echo "Resolved signing identity: $IDENTITY"
+          echo "signed=true" >> "$GITHUB_OUTPUT"
+          echo "identity=$IDENTITY" >> "$GITHUB_OUTPUT"
+          echo "keychain=$KEYCHAIN_PATH" >> "$GITHUB_OUTPUT"
+          rm -f "$CERT_PATH"
+
       - name: Build app bundle
+        env:
+          SIGN_IDENTITY: ${{ steps.signing.outputs.identity || '-' }}
         run: sh scripts/build-app.sh
+
+      - name: Notarize and staple
+        if: steps.signing.outputs.signed == 'true'
+        env:
+          AC_APPLE_ID: ${{ secrets.AC_APPLE_ID }}
+          AC_APP_PASSWORD: ${{ secrets.AC_APP_PASSWORD }}
+          AC_TEAM_ID: ${{ secrets.AC_TEAM_ID }}
+        run: |
+          NOTARIZE_ZIP="$RUNNER_TEMP/ccAwake-notarize.zip"
+          ditto -c -k --keepParent .build/ccAwake.app "$NOTARIZE_ZIP"
+          xcrun notarytool submit "$NOTARIZE_ZIP" \
+            --apple-id "$AC_APPLE_ID" \
+            --password "$AC_APP_PASSWORD" \
+            --team-id "$AC_TEAM_ID" \
+            --wait
+          xcrun stapler staple .build/ccAwake.app
+          spctl -a -vvv .build/ccAwake.app
+
+      - name: Clean up keychain
+        if: always() && steps.signing.outputs.signed == 'true'
+        run: security delete-keychain "${{ steps.signing.outputs.keychain }}" || true
 
       - name: Package app
         run: |
