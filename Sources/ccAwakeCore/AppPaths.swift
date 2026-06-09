@@ -19,6 +19,14 @@ public struct CCAwakePaths: Equatable, Sendable {
         applicationSupportDirectory.appendingPathComponent("settings.json")
     }
 
+    public var binDirectory: URL {
+        applicationSupportDirectory.appendingPathComponent("bin", isDirectory: true)
+    }
+
+    public var installedHookExecutableURL: URL {
+        binDirectory.appendingPathComponent("ccawake-hook")
+    }
+
     public static func defaultApplicationSupportDirectory() -> URL {
         if
             let override = ProcessInfo.processInfo.environment["CCAWAKE_APP_SUPPORT_DIR"],

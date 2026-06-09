@@ -48,6 +48,14 @@ Session state is stored at:
 ~/Library/Application Support/ccAwake/sessions.json
 ```
 
+The hook executable is copied to a stable path before installation:
+
+```text
+~/Library/Application Support/ccAwake/bin/ccawake-hook
+```
+
+After installing hooks, start a new Claude Code prompt or tool run so Claude Code can report an active session.
+
 For isolated testing:
 
 ```sh

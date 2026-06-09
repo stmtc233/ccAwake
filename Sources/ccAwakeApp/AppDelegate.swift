@@ -346,7 +346,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func installClaudeHooks() {
         do {
-            let hookPath = try hookExecutablePath()
+            let hookPath = try installStableHookExecutable()
             try ClaudeSettingsInstaller().install(hookExecutablePath: hookPath)
         } catch {
             presentError(title: L10n.string("error.installHooks"), error: error)
@@ -378,18 +378,37 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         evaluate()
     }
 
-    private func hookExecutablePath() throws -> String {
+    private func installStableHookExecutable() throws -> String {
+        let sourceURL = try bundledHookExecutableURL()
+        let destinationURL = paths.installedHookExecutableURL
+        let fileManager = FileManager.default
+
+        try fileManager.createDirectory(at: paths.binDirectory, withIntermediateDirectories: true)
+
+        if fileManager.fileExists(atPath: destinationURL.path) {
+            try fileManager.removeItem(at: destinationURL)
+        }
+        try fileManager.copyItem(at: sourceURL, to: destinationURL)
+        try fileManager.setAttributes(
+            [.posixPermissions: NSNumber(value: Int16(0o755))],
+            ofItemAtPath: destinationURL.path
+        )
+
+        return destinationURL.path
+    }
+
+    private func bundledHookExecutableURL() throws -> URL {
         let fileManager = FileManager.default
         if let executableDirectory = Bundle.main.executableURL?.deletingLastPathComponent() {
             let sibling = executableDirectory.appendingPathComponent("ccawake-hook")
             if fileManager.isExecutableFile(atPath: sibling.path) {
-                return sibling.path
+                return sibling
             }
         }
 
         let commonInstallPath = "/usr/local/bin/ccawake-hook"
         if fileManager.isExecutableFile(atPath: commonInstallPath) {
-            return commonInstallPath
+            return URL(fileURLWithPath: commonInstallPath)
         }
 
         throw NSError(

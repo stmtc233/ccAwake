@@ -48,6 +48,14 @@ Release 自动化说明见 [RELEASE.md](RELEASE.md)。
 ~/Library/Application Support/ccAwake/sessions.json
 ```
 
+安装 hooks 前，ccAwake 会先把 hook 可执行文件复制到稳定路径：
+
+```text
+~/Library/Application Support/ccAwake/bin/ccawake-hook
+```
+
+安装 hooks 后，需要重新发起一次 Claude Code prompt 或工具调用，Claude Code 才会写入活跃会话。
+
 隔离测试可以指定状态目录：
 
 ```sh
