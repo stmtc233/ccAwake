@@ -13,15 +13,6 @@ public enum SessionTimeout: Codable, Equatable, Sendable {
         }
     }
 
-    public var displayName: String {
-        switch self {
-        case .minutes(let value):
-            return "\(value) minutes"
-        case .never:
-            return "Never"
-        }
-    }
-
     private enum CodingKeys: String, CodingKey {
         case kind
         case minutes

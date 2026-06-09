@@ -34,9 +34,19 @@ public enum ClaudeSettingsInstallerError: LocalizedError {
 
 public struct ClaudeSettingsInstaller: Sendable {
     public let settingsURL: URL
+    public let lockURL: URL
 
-    public init(settingsURL: URL = ClaudeSettingsInstaller.defaultSettingsURL()) {
+    /// Number of timestamped backups to retain; older ones are pruned.
+    private static let maxBackups = 5
+
+    public init(
+        settingsURL: URL = ClaudeSettingsInstaller.defaultSettingsURL(),
+        lockURL: URL? = nil
+    ) {
         self.settingsURL = settingsURL
+        self.lockURL = lockURL ?? settingsURL
+            .deletingLastPathComponent()
+            .appendingPathComponent("settings.json.ccAwake-lock")
     }
 
     public static func defaultSettingsURL() -> URL {
@@ -46,36 +56,44 @@ public struct ClaudeSettingsInstaller: Sendable {
     }
 
     public func install(hookExecutablePath: String) throws {
-        var root = try readRoot()
-        try backupIfPresent()
+        // Serialize ccAwake's own read-modify-write under an advisory lock and
+        // write atomically. This does not force Claude Code (which owns this
+        // file) to cooperate, but it prevents concurrent ccAwake installs from
+        // racing and keeps the file always-valid via the atomic replace.
+        try FileLock(url: lockURL).withExclusiveLock {
+            var root = try readRoot()
+            try backupIfPresent()
 
-        var hooks = root["hooks"] as? [String: Any] ?? [:]
-        for event in ClaudeHookEvent.allCases {
-            let currentEntries = hooks[event.rawValue] as? [[String: Any]] ?? []
-            let cleaned = currentEntries.filter { !Self.containsManagedCommand($0) }
-            hooks[event.rawValue] = cleaned + [Self.entry(for: event, hookExecutablePath: hookExecutablePath)]
+            var hooks = root["hooks"] as? [String: Any] ?? [:]
+            for event in ClaudeHookEvent.allCases {
+                let currentEntries = hooks[event.rawValue] as? [[String: Any]] ?? []
+                let cleaned = currentEntries.filter { !Self.containsManagedCommand($0) }
+                hooks[event.rawValue] = cleaned + [Self.entry(for: event, hookExecutablePath: hookExecutablePath)]
+            }
+
+            root["hooks"] = hooks
+            try writeRoot(root)
         }
-
-        root["hooks"] = hooks
-        try writeRoot(root)
     }
 
     public func uninstall() throws {
-        var root = try readRoot()
-        try backupIfPresent()
+        try FileLock(url: lockURL).withExclusiveLock {
+            var root = try readRoot()
+            try backupIfPresent()
 
-        guard var hooks = root["hooks"] as? [String: Any] else {
+            guard var hooks = root["hooks"] as? [String: Any] else {
+                try writeRoot(root)
+                return
+            }
+
+            for event in ClaudeHookEvent.allCases {
+                guard let entries = hooks[event.rawValue] as? [[String: Any]] else { continue }
+                hooks[event.rawValue] = entries.filter { !Self.containsManagedCommand($0) }
+            }
+
+            root["hooks"] = hooks
             try writeRoot(root)
-            return
         }
-
-        for event in ClaudeHookEvent.allCases {
-            guard let entries = hooks[event.rawValue] as? [[String: Any]] else { continue }
-            hooks[event.rawValue] = entries.filter { !Self.containsManagedCommand($0) }
-        }
-
-        root["hooks"] = hooks
-        try writeRoot(root)
     }
 
     public static func shellQuoted(_ value: String) -> String {
@@ -145,5 +163,27 @@ public struct ClaudeSettingsInstaller: Sendable {
             .appendingPathComponent("settings.json.ccAwake-backup-\(timestamp)-\(UUID().uuidString)")
 
         try FileManager.default.copyItem(at: settingsURL, to: backupURL)
+        pruneBackups(keeping: Self.maxBackups)
+    }
+
+    /// Best-effort pruning of old backups, keeping the most recent `count`.
+    /// The `yyyyMMddHHmmss` prefix sorts lexicographically in chronological
+    /// order; pruning failure must never fail an install/uninstall.
+    private func pruneBackups(keeping count: Int) {
+        let directory = settingsURL.deletingLastPathComponent()
+        let prefix = "settings.json.ccAwake-backup-"
+
+        guard let names = try? FileManager.default.contentsOfDirectory(atPath: directory.path) else {
+            return
+        }
+
+        let backups = names
+            .filter { $0.hasPrefix(prefix) }
+            .sorted(by: >)
+
+        guard backups.count > count else { return }
+        for name in backups.dropFirst(count) {
+            try? FileManager.default.removeItem(at: directory.appendingPathComponent(name))
+        }
     }
 }

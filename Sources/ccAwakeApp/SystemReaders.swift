@@ -1,4 +1,5 @@
 import Foundation
+import ccAwakeCore
 
 enum ProcessReadError: Error {
     case launchFailed
@@ -6,25 +7,11 @@ enum ProcessReadError: Error {
 
 enum CommandReader {
     static func read(executable: String, arguments: [String]) -> String? {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: executable)
-        process.arguments = arguments
-
-        let outputPipe = Pipe()
-        process.standardOutput = outputPipe
-        process.standardError = Pipe()
-
-        do {
-            try process.run()
-        } catch {
+        guard let result = ProcessRunner.run(executable: executable, arguments: arguments) else {
             return nil
         }
-
-        process.waitUntilExit()
-        guard process.terminationStatus == 0 else { return nil }
-
-        let data = outputPipe.fileHandleForReading.readDataToEndOfFile()
-        return String(data: data, encoding: .utf8)
+        guard result.status == 0 else { return nil }
+        return result.stdoutString
     }
 }
 
@@ -41,6 +28,14 @@ enum PowerSourceReader {
             return false
         }
         return nil
+    }
+
+    /// Off-main-thread variant: spawns `pmset` on a background queue so the
+    /// caller (e.g. the @MainActor evaluate loop) never blocks on the subprocess.
+    static func readIsOnACPower(completion: @escaping @Sendable (Bool?) -> Void) {
+        DispatchQueue.global(qos: .utility).async {
+            completion(isOnACPower())
+        }
     }
 }
 
@@ -61,43 +56,11 @@ enum ClamshellReader {
         }
         return nil
     }
-}
 
-enum SleepDisabledReader {
-    static func isSleepDisabled() -> Bool? {
-        guard let output = CommandReader.read(
-            executable: "/usr/sbin/ioreg",
-            arguments: ["-r", "-k", "SleepDisabled", "-d", "4"]
-        ) else {
-            return nil
-        }
-
-        if output.contains("\"SleepDisabled\" = Yes") {
-            return true
-        }
-        if output.contains("\"SleepDisabled\" = No") {
-            return false
-        }
-        return nil
-    }
-
-    static func verify(
-        expected: Bool,
-        attempts: Int = 6,
-        interval: TimeInterval = 0.25,
-        completion: @escaping @Sendable (Bool) -> Void
-    ) {
+    /// Off-main-thread variant; see `PowerSourceReader.readIsOnACPower`.
+    static func readIsLidClosed(completion: @escaping @Sendable (Bool?) -> Void) {
         DispatchQueue.global(qos: .utility).async {
-            for attempt in 0..<attempts {
-                if isSleepDisabled() == expected {
-                    completion(true)
-                    return
-                }
-                if attempt + 1 < attempts {
-                    Thread.sleep(forTimeInterval: interval)
-                }
-            }
-            completion(false)
+            completion(isLidClosed())
         }
     }
 }

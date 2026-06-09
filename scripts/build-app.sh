@@ -61,7 +61,14 @@ sign_one "$APP_MACOS_DIR/ccAwake"
 sign_one "$APP_DIR"
 
 # Verify the resulting signature so CI fails loudly on a broken bundle.
-codesign --verify --deep --strict --verbose=2 "$APP_DIR"
+# `--deep` is deprecated by Apple, so we verify each nested executable
+# explicitly (bottom-up, matching the inside-out signing order) plus the
+# outer bundle with `--strict`. The release workflow's `spctl -a -vvv` after
+# notarization is the authoritative Gatekeeper check.
+codesign --verify --strict --verbose=2 "$APP_MACOS_DIR/com.stmtc.ccAwake.Helper"
+codesign --verify --strict --verbose=2 "$APP_MACOS_DIR/ccawake-hook"
+codesign --verify --strict --verbose=2 "$APP_MACOS_DIR/ccAwake"
+codesign --verify --strict --verbose=2 "$APP_DIR"
 codesign -dv --verbose=2 "$APP_DIR" 2>&1 | grep -E "TeamIdentifier|Authority=Developer" || true
 
 echo "Built $APP_DIR"

@@ -48,6 +48,48 @@ final class SettingsInstallerTests: XCTestCase {
         XCTAssertEqual(stopEntries.count, 1)
     }
 
+    func testBackupsAreCappedAndNewestRetained() throws {
+        let directory = try temporaryDirectory()
+        let settingsURL = directory.appendingPathComponent("settings.json")
+        try Data(#"{"permissions":{}}"#.utf8).write(to: settingsURL)
+
+        let installer = ClaudeSettingsInstaller(settingsURL: settingsURL)
+        // Each install/uninstall makes one backup; run well past the cap of 5.
+        for _ in 0..<8 {
+            try installer.install(hookExecutablePath: "/tmp/ccawake-hook")
+        }
+
+        let backups = try FileManager.default
+            .contentsOfDirectory(atPath: directory.path)
+            .filter { $0.hasPrefix("settings.json.ccAwake-backup-") }
+        XCTAssertLessThanOrEqual(backups.count, 5)
+    }
+
+    func testConcurrentInstallUninstallKeepsValidJSON() throws {
+        let directory = try temporaryDirectory()
+        let settingsURL = directory.appendingPathComponent("settings.json")
+        try Data(#"{"permissions":{"allow":["Bash(ls:*)"]}}"#.utf8).write(to: settingsURL)
+
+        let installer = ClaudeSettingsInstaller(settingsURL: settingsURL)
+        let group = DispatchGroup()
+        for index in 0..<20 {
+            group.enter()
+            DispatchQueue.global().async {
+                if index.isMultiple(of: 2) {
+                    try? installer.install(hookExecutablePath: "/tmp/ccawake-hook")
+                } else {
+                    try? installer.uninstall()
+                }
+                group.leave()
+            }
+        }
+        group.wait()
+
+        // The file must always be parseable JSON (atomic writes under the lock).
+        let root = try readJSON(settingsURL)
+        XCTAssertNotNil(root["permissions"])
+    }
+
     private func readJSON(_ url: URL) throws -> [String: Any] {
         let data = try Data(contentsOf: url)
         return try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])

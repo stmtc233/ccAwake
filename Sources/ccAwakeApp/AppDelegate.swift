@@ -21,10 +21,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var lastOnACPower: Bool?
     private var lastStatusMessage = L10n.string("status.inactive")
     private var transientStatusUntil: Date?
+    private var isEvaluating = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        NSApp.setActivationPolicy(.accessory)
-
         do {
             try paths.ensureApplicationSupportDirectory()
             settings = try settingsStore.load()
@@ -55,7 +54,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return .terminateNow
         }
 
-        powerManager.setSleepDisabled(false) { _ in
+        // Only the privileged helper can clear the sleep state silently. If it
+        // is unavailable we terminate immediately rather than popping an
+        // osascript admin-password dialog during shutdown.
+        guard helper.isUsable else {
+            return .terminateNow
+        }
+
+        powerManager.setSleepDisabled(false, allowOsascriptFallback: false) { _ in
             DispatchQueue.main.async {
                 NSApp.reply(toApplicationShouldTerminate: true)
             }
@@ -71,17 +77,46 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func evaluate() {
-        do {
-            try sessionStore.pruneExpired(timeout: settings.timeout)
-            lastSnapshot = try sessionStore.snapshot(timeout: settings.timeout)
-        } catch {
+        // Async reads (session store + pmset) can outlast the 5s tick interval.
+        // Guard against overlapping evaluations stomping each other's state.
+        guard !isEvaluating else { return }
+        isEvaluating = true
+
+        let store = sessionStore
+        let timeout = settings.timeout
+
+        // Read the session store and AC power state off the main thread so the
+        // 5s timer never blocks the UI on subprocess spawns.
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            let snapshotResult: Result<SessionSnapshot, Error>
+            do {
+                try store.pruneExpired(timeout: timeout)
+                snapshotResult = .success(try store.snapshot(timeout: timeout))
+            } catch {
+                snapshotResult = .failure(error)
+            }
+            let onAC = PowerSourceReader.isOnACPower()
+
+            Task { @MainActor in
+                self?.applyEvaluation(snapshotResult: snapshotResult, onACPower: onAC)
+            }
+        }
+    }
+
+    private func applyEvaluation(snapshotResult: Result<SessionSnapshot, Error>, onACPower: Bool?) {
+        defer { isEvaluating = false }
+
+        switch snapshotResult {
+        case .failure:
             lastStatusMessage = L10n.string("status.sessionReadFailed")
             rebuildMenu()
             return
+        case .success(let snapshot):
+            lastSnapshot = snapshot
         }
 
-        lastOnACPower = PowerSourceReader.isOnACPower()
-        let onAC = lastOnACPower ?? true
+        lastOnACPower = onACPower
+        let onAC = onACPower ?? true
         let wantsClaudeAwake = settings.automationEnabled && lastSnapshot.hasActiveSessions
         let wantsAwake = settings.manualKeepAwake || wantsClaudeAwake
         let policyAllowsAwake = settings.allowOnBattery || onAC
@@ -137,11 +172,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
-        guard let lidClosed = ClamshellReader.isLidClosed() else { return }
-        defer { lastLidClosed = lidClosed }
+        // Read lid state off the main thread; do edge detection back on main.
+        ClamshellReader.readIsLidClosed { [weak self] lidClosed in
+            Task { @MainActor in
+                guard let self, let lidClosed else { return }
+                let wasClosed = self.lastLidClosed
+                self.lastLidClosed = lidClosed
 
-        guard lidClosed && !lastLidClosed else { return }
-        powerManager.displaySleepNow { _ in }
+                guard lidClosed && !wasClosed else { return }
+                self.powerManager.displaySleepNow { result in
+                    if case .failure(let error) = result {
+                        NSLog("ccAwake: displaySleepNow failed: \(error.localizedDescription)")
+                    }
+                }
+            }
+        }
     }
 
     private func rebuildMenu() {

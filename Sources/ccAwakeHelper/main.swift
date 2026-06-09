@@ -31,35 +31,27 @@ final class HelperTool: NSObject, NSXPCListenerDelegate, CCAwakeHelperProtocol {
     }
 
     private func runPMSet(arguments: [String], reply: @escaping (NSError?) -> Void) {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/pmset")
-        process.arguments = arguments
-
-        let errorPipe = Pipe()
-        process.standardError = errorPipe
-
-        do {
-            try process.run()
-        } catch {
-            reply(error as NSError)
+        guard let result = ProcessRunner.run(executable: "/usr/bin/pmset", arguments: arguments) else {
+            reply(NSError(
+                domain: CCAwakeHelperConstants.bundleIdentifier,
+                code: -1,
+                userInfo: [NSLocalizedDescriptionKey: "Could not launch pmset."]
+            ))
             return
         }
 
-        process.waitUntilExit()
-
-        guard process.terminationStatus != 0 else {
+        guard result.status != 0 else {
             reply(nil)
             return
         }
 
-        let data = errorPipe.fileHandleForReading.readDataToEndOfFile()
-        let message = String(data: data, encoding: .utf8)?
+        let message = result.stderrString?
             .trimmingCharacters(in: .whitespacesAndNewlines)
             ?? "pmset failed"
 
         reply(NSError(
             domain: CCAwakeHelperConstants.bundleIdentifier,
-            code: Int(process.terminationStatus),
+            code: Int(result.status),
             userInfo: [NSLocalizedDescriptionKey: message]
         ))
     }

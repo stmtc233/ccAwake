@@ -1,4 +1,5 @@
 import Foundation
+import ccAwakeCore
 
 enum PowerManagerError: LocalizedError {
     case scriptFailed(status: Int32, message: String)
@@ -25,41 +26,34 @@ final class PowerManager {
         self.helper = helper
     }
 
-    func setSleepDisabled(_ disabled: Bool, completion: @escaping @Sendable (Result<Void, Error>) -> Void) {
+    func setSleepDisabled(
+        _ disabled: Bool,
+        allowOsascriptFallback: Bool = true,
+        completion: @escaping @Sendable (Result<Void, Error>) -> Void
+    ) {
         if helper.isUsable {
             helper.setSleepDisabled(disabled) { [weak self] result in
                 switch result {
                 case .success:
-                    Task { @MainActor in
-                        self?.completeAfterVerifyingSleepDisabled(
-                            disabled,
-                            completion: completion
-                        )
+                    // The privileged pmset already succeeded — trust it. We do
+                    // not re-verify via ioreg and fall back to an admin prompt,
+                    // because ioreg's SleepDisabled key can lag the actual value
+                    // and would trigger a spurious password dialog.
+                    completion(.success(()))
+                case .failure(let error):
+                    guard allowOsascriptFallback else {
+                        completion(.failure(error))
+                        return
                     }
-                case .failure:
                     Task { @MainActor in
                         self?.setSleepDisabledViaOsascript(disabled, completion: completion)
                     }
                 }
             }
-        } else {
+        } else if allowOsascriptFallback {
             setSleepDisabledViaOsascript(disabled, completion: completion)
-        }
-    }
-
-    private func completeAfterVerifyingSleepDisabled(
-        _ disabled: Bool,
-        completion: @escaping @Sendable (Result<Void, Error>) -> Void
-    ) {
-        SleepDisabledReader.verify(expected: disabled) { [weak self] matches in
-            if matches {
-                completion(.success(()))
-                return
-            }
-
-            Task { @MainActor in
-                self?.setSleepDisabledViaOsascript(disabled, completion: completion)
-            }
+        } else {
+            completion(.failure(HelperError.helperUnavailable))
         }
     }
 
@@ -84,8 +78,11 @@ final class PowerManager {
         _ disabled: Bool,
         completion: @escaping @Sendable (Result<Void, Error>) -> Void
     ) {
-        let flag = disabled ? "1" : "0"
-        let shellCommand = "/usr/bin/pmset -a disablesleep \(flag)"
+        // `flag` is a fixed literal, so the command string is constant — no
+        // interpolation of dynamic values into the shell/AppleScript string.
+        let shellCommand = disabled
+            ? "/usr/bin/pmset -a disablesleep 1"
+            : "/usr/bin/pmset -a disablesleep 0"
         let appleScript = "do shell script \"\(shellCommand)\" with administrator privileges"
         runProcess(
             executableURL: URL(fileURLWithPath: "/usr/bin/osascript"),
@@ -108,32 +105,23 @@ final class PowerManager {
         completion: @escaping @Sendable (Result<Void, Error>) -> Void
     ) {
         DispatchQueue.global(qos: .userInitiated).async {
-            let process = Process()
-            process.executableURL = executableURL
-            process.arguments = arguments
-
-            let errorPipe = Pipe()
-            process.standardError = errorPipe
-            process.standardOutput = Pipe()
-
-            do {
-                try process.run()
-            } catch {
-                completion(.failure(PowerManagerError.launchFailed(error)))
+            guard let result = ProcessRunner.run(
+                executable: executableURL.path,
+                arguments: arguments
+            ) else {
+                completion(.failure(PowerManagerError.launchFailed(ProcessReadError.launchFailed)))
                 return
             }
 
-            process.waitUntilExit()
-            guard process.terminationStatus != 0 else {
+            guard result.status != 0 else {
                 completion(.success(()))
                 return
             }
 
-            let data = errorPipe.fileHandleForReading.readDataToEndOfFile()
-            let message = String(data: data, encoding: .utf8)?
+            let message = result.stderrString?
                 .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             completion(.failure(PowerManagerError.scriptFailed(
-                status: process.terminationStatus,
+                status: result.status,
                 message: message
             )))
         }

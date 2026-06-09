@@ -19,12 +19,39 @@ The release workflow publishes:
 - `ccAwake-v0.1.0.app.zip`
 - `ccAwake-v0.1.0.app.zip.sha256`
 
-## Signing
+## Signing & Notarization
 
-The current build script uses ad-hoc signing:
+`scripts/build-app.sh` signs the bundle based on the `SIGN_IDENTITY` environment
+variable:
 
-```sh
-codesign --force --sign -
-```
+- **Unset or `-`** → ad-hoc signing (`codesign --sign -`). Local development only.
+  The privileged Helper daemon will **not** register with launchd under ad-hoc
+  signing, so keep-awake cannot actually work. Not distributable.
+- **A Developer ID Application identity** → distribution signing with a hardened
+  runtime and secure timestamp (`--options runtime --timestamp`), required for
+  notarization and for the `SMAppService` Helper to register.
 
-This is enough for CI packaging and local testing, but it is not Developer ID signing or notarization. For public distribution outside GitHub source builds, add Developer ID signing and Apple notarization before marking a release as production-ready.
+The `Release` workflow (`.github/workflows/release.yml`) runs the full pipeline
+on `v*` tags when the signing secrets are present:
+
+1. Imports the Developer ID `.p12` into a temporary keychain and resolves the
+   signing identity (falls back to ad-hoc, non-distributable, if secrets are
+   absent).
+2. Builds the signed bundle via `build-app.sh`.
+3. Notarizes: zips with `ditto`, submits via `xcrun notarytool submit --wait`,
+   staples with `xcrun stapler staple`, and verifies with `spctl -a -vvv`.
+4. Packages `ccAwake-<tag>.app.zip` + `.sha256` and publishes the GitHub Release.
+
+### Required GitHub secrets
+
+| Secret | Purpose |
+| --- | --- |
+| `DEVELOPER_ID_P12_BASE64` | Base64-encoded Developer ID Application cert (`.p12`) |
+| `DEVELOPER_ID_P12_PASSWORD` | Password for the `.p12` |
+| `KEYCHAIN_PASSWORD` | Password for the temporary CI keychain |
+| `AC_APPLE_ID` | Apple ID for notarization |
+| `AC_APP_PASSWORD` | App-specific password for notarization |
+| `AC_TEAM_ID` | Apple Developer Team ID |
+
+If the signing secrets are not configured, the workflow still builds and
+packages an ad-hoc bundle, but marks it as not distributable.

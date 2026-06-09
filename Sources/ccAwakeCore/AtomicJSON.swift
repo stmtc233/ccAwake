@@ -22,10 +22,18 @@ enum AtomicJSON {
         let temporaryURL = directory.appendingPathComponent(".\(url.lastPathComponent).tmp-\(UUID().uuidString)")
         try data.write(to: temporaryURL, options: .atomic)
 
-        if FileManager.default.fileExists(atPath: url.path) {
-            _ = try FileManager.default.replaceItemAt(url, withItemAt: temporaryURL)
-        } else {
-            try FileManager.default.moveItem(at: temporaryURL, to: url)
+        // On the success paths the temp file is consumed (moved/replaced); if
+        // the replace/move throws, remove the leftover temp so it doesn't
+        // accumulate in the directory.
+        do {
+            if FileManager.default.fileExists(atPath: url.path) {
+                _ = try FileManager.default.replaceItemAt(url, withItemAt: temporaryURL)
+            } else {
+                try FileManager.default.moveItem(at: temporaryURL, to: url)
+            }
+        } catch {
+            try? FileManager.default.removeItem(at: temporaryURL)
+            throw error
         }
     }
 }

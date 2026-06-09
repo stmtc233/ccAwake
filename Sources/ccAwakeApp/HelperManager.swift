@@ -65,14 +65,6 @@ final class HelperManager {
         }
     }
 
-    func unregister() {
-        do {
-            try service.unregister()
-        } catch {
-            NSLog("ccAwake: SMAppService.unregister() failed: \(error.localizedDescription)")
-        }
-    }
-
     func revealInSystemSettings() {
         SMAppService.openSystemSettingsLoginItems()
     }
