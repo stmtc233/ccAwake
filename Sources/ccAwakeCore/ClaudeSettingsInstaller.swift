@@ -12,7 +12,13 @@ public enum ClaudeHookEvent: String, CaseIterable, Sendable {
         switch self {
         case .userPromptSubmit, .preToolUse, .postToolUse:
             return "touch"
-        case .notification, .stop, .sessionEnd:
+        case .notification:
+            // Claude fires Notification when it needs the user's attention or a
+            // permission decision. Mark the session "waiting" rather than
+            // releasing it, so the app can optionally restore sleep while the
+            // user is away instead of keeping the Mac awake indefinitely.
+            return "waiting"
+        case .stop, .sessionEnd:
             return "release"
         }
     }
@@ -98,6 +104,47 @@ public struct ClaudeSettingsInstaller: Sendable {
 
     public static func shellQuoted(_ value: String) -> String {
         "'\(value.replacingOccurrences(of: "'", with: "'\\''"))'"
+    }
+
+    /// Whether ccAwake's managed hooks are currently installed in the settings.
+    /// `partial` means some — but not all — hook events carry a ccAwake command
+    /// (e.g. installed by an older build, or a hand-edited file), so the menu
+    /// can offer a re-install to repair the mapping.
+    public enum InstallationStatus: Equatable, Sendable {
+        case notInstalled
+        case partial
+        case installed
+    }
+
+    /// Inspect the settings file and report whether the managed hooks are
+    /// present. Read-only: takes a shared lock and never mutates the file.
+    /// Any read/parse failure is reported as `.notInstalled` so the menu degrades
+    /// gracefully rather than surfacing an error for a missing or foreign file.
+    public func installationStatus() -> InstallationStatus {
+        let root: [String: Any]
+        do {
+            root = try FileLock(url: lockURL).withSharedLock { try readRoot() }
+        } catch {
+            return .notInstalled
+        }
+
+        guard let hooks = root["hooks"] as? [String: Any] else {
+            return .notInstalled
+        }
+
+        let managedCount = ClaudeHookEvent.allCases.filter { event in
+            let entries = hooks[event.rawValue] as? [[String: Any]] ?? []
+            return entries.contains { Self.containsManagedCommand($0) }
+        }.count
+
+        switch managedCount {
+        case 0:
+            return .notInstalled
+        case ClaudeHookEvent.allCases.count:
+            return .installed
+        default:
+            return .partial
+        }
     }
 
     private static func entry(for event: ClaudeHookEvent, hookExecutablePath: String) -> [String: Any] {

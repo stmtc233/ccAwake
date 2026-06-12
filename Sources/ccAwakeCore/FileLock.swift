@@ -23,6 +23,16 @@ public struct FileLock: Sendable {
     }
 
     public func withExclusiveLock<T>(_ body: () throws -> T) throws -> T {
+        try withLock(LOCK_EX, body)
+    }
+
+    /// Acquire a shared (read) lock. Multiple readers may hold it concurrently,
+    /// but it blocks against an exclusive writer. Use for read-only inspection.
+    public func withSharedLock<T>(_ body: () throws -> T) throws -> T {
+        try withLock(LOCK_SH, body)
+    }
+
+    private func withLock<T>(_ operation: Int32, _ body: () throws -> T) throws -> T {
         let parent = url.deletingLastPathComponent()
         try FileManager.default.createDirectory(at: parent, withIntermediateDirectories: true)
 
@@ -31,7 +41,7 @@ public struct FileLock: Sendable {
             throw FileLockError.couldNotOpen(url, errno: errno)
         }
 
-        if flock(fd, LOCK_EX) != 0 {
+        if flock(fd, operation) != 0 {
             let lockErrno = errno
             close(fd)
             throw FileLockError.couldNotLock(url, errno: lockErrno)

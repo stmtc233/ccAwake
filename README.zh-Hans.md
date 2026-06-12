@@ -40,7 +40,10 @@ Release 自动化说明见 [RELEASE.md](RELEASE.md)。
 打开菜单栏 App，选择 **Install Claude Hooks**。ccAwake 会先备份并合并 `~/.claude/settings.json`：
 
 - `UserPromptSubmit`、`PreToolUse`、`PostToolUse` -> `ccawake-hook touch`
-- `Notification`、`Stop`、`SessionEnd` -> `ccawake-hook release`
+- `Notification` -> `ccawake-hook waiting`（Claude 暂停并等待你的输入）
+- `Stop`、`SessionEnd` -> `ccawake-hook release`
+
+当 Claude 暂停等待你的输入或权限确认时，会话会被标记为**等待中**。默认情况下 ccAwake 会在等待时恢复正常休眠；在菜单中开启 **等待用户时保持唤醒** 可保持唤醒直到你回应。
 
 会话状态保存位置：
 

@@ -40,7 +40,10 @@ Release automation is documented in [RELEASE.md](RELEASE.md).
 Open the menu bar app and choose **Install Claude Hooks**. ccAwake backs up and merges `~/.claude/settings.json` with:
 
 - `UserPromptSubmit`, `PreToolUse`, `PostToolUse` -> `ccawake-hook touch`
-- `Notification`, `Stop`, `SessionEnd` -> `ccawake-hook release`
+- `Notification` -> `ccawake-hook waiting` (Claude is paused awaiting your input)
+- `Stop`, `SessionEnd` -> `ccawake-hook release`
+
+When Claude pauses for your input or a permission decision, the session is marked **waiting**. By default ccAwake restores normal sleep while waiting; enable **Keep Awake While Waiting** in the menu to stay awake until you respond.
 
 Session state is stored at:
 

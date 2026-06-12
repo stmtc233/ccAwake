@@ -8,7 +8,7 @@ func writeError(_ message: String) {
 
 let arguments = CommandLine.arguments.dropFirst()
 guard let action = arguments.first, arguments.count == 1 else {
-    writeError("usage: ccawake-hook touch|release")
+    writeError("usage: ccawake-hook touch|waiting|release")
     exit(2)
 }
 
@@ -20,7 +20,16 @@ do {
 
     switch action {
     case "touch":
-        try store.touch(sessionID: payload.sessionID)
+        // A blocking interactive tool (a question prompt or plan-approval gate)
+        // means Claude is paused waiting on the user, even though it arrives via
+        // the PreToolUse → touch mapping. Mark the session waiting in that case.
+        if payload.isInteractiveWait {
+            try store.markWaiting(sessionID: payload.sessionID)
+        } else {
+            try store.touch(sessionID: payload.sessionID)
+        }
+    case "waiting":
+        try store.markWaiting(sessionID: payload.sessionID)
     case "release":
         try store.release(sessionID: payload.sessionID)
     default:

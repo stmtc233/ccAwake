@@ -5,6 +5,8 @@
 "status.manualKeepAwake" = "Manual keep awake";
 "status.claudeActive" = "Claude active";
 "status.automationPaused" = "Automation paused";
+"status.waitingKeepAwake" = "Claude waiting (staying awake)";
+"status.waitingSleep" = "Claude waiting (sleep allowed)";
 "status.restoringSleep" = "Restoring normal sleep";
 "status.alreadyNormal" = "Already normal sleep";
 
@@ -15,6 +17,8 @@
 "menu.resumeAutomation" = "Resume Claude Automation";
 "menu.manualOn" = "Manual Keep Awake: On";
 "menu.manualOff" = "Manual Keep Awake: Off";
+"menu.keepAwakeWhileWaitingOn" = "Keep Awake While Waiting: On";
+"menu.keepAwakeWhileWaitingOff" = "Keep Awake While Waiting: Off";
 "menu.turnOffNow" = "Restore Normal Sleep Now";
 "menu.timeout" = "Timeout: %@";
 "menu.customTimeout" = "Custom...";
@@ -26,7 +30,12 @@
 "menu.launchAtLoginOff" = "Launch at Login: Off";
 "menu.launchAtLoginApproval" = "Approve Launch at Login in System Settings...";
 "menu.installHooks" = "Install Claude Hooks";
+"menu.reinstallHooks" = "Reinstall Claude Hooks";
+"menu.repairHooks" = "Repair Claude Hooks";
 "menu.uninstallHooks" = "Uninstall Claude Hooks";
+"menu.hooksStatusInstalled" = "Claude Hooks: Installed";
+"menu.hooksStatusPartial" = "Claude Hooks: Partially Installed";
+"menu.hooksStatusNotInstalled" = "Claude Hooks: Not Installed";
 "menu.quit" = "Quit ccAwake";
 "menu.approveHelper" = "Approve Helper in System Settings...";
 "menu.helperInstalling" = "Helper Installing...";

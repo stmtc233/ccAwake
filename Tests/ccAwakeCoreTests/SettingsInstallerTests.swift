@@ -90,6 +90,39 @@ final class SettingsInstallerTests: XCTestCase {
         XCTAssertNotNil(root["permissions"])
     }
 
+    func testInstallationStatusReflectsLifecycle() throws {
+        let directory = try temporaryDirectory()
+        let settingsURL = directory.appendingPathComponent("settings.json")
+        let installer = ClaudeSettingsInstaller(settingsURL: settingsURL)
+
+        // No file yet.
+        XCTAssertEqual(installer.installationStatus(), .notInstalled)
+
+        try installer.install(hookExecutablePath: "/tmp/ccawake-hook")
+        XCTAssertEqual(installer.installationStatus(), .installed)
+
+        // Drop one managed event to simulate a partial / stale install.
+        var root = try readJSON(settingsURL)
+        var hooks = try XCTUnwrap(root["hooks"] as? [String: Any])
+        hooks["Stop"] = []
+        root["hooks"] = hooks
+        try JSONSerialization.data(withJSONObject: root, options: [.prettyPrinted]).write(to: settingsURL)
+        XCTAssertEqual(installer.installationStatus(), .partial)
+
+        try installer.uninstall()
+        XCTAssertEqual(installer.installationStatus(), .notInstalled)
+    }
+
+    func testInstallationStatusIgnoresForeignHooks() throws {
+        let directory = try temporaryDirectory()
+        let settingsURL = directory.appendingPathComponent("settings.json")
+        try Data(#"{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"echo other"}]}]}}"#.utf8)
+            .write(to: settingsURL)
+
+        let installer = ClaudeSettingsInstaller(settingsURL: settingsURL)
+        XCTAssertEqual(installer.installationStatus(), .notInstalled)
+    }
+
     private func readJSON(_ url: URL) throws -> [String: Any] {
         let data = try Data(contentsOf: url)
         return try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])

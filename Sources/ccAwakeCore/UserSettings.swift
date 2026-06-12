@@ -51,17 +51,41 @@ public struct CCAwakeSettings: Codable, Equatable, Sendable {
     public var timeout: SessionTimeout
     public var manualKeepAwake: Bool
     public var automationEnabled: Bool
+    /// When a Claude session is paused awaiting the user (a permission prompt,
+    /// an error, or an idle notification), keep the Mac awake instead of
+    /// restoring normal sleep. Default off: pausing for the user restores sleep.
+    public var keepAwakeWhileWaiting: Bool
 
     public init(
         allowOnBattery: Bool = false,
         timeout: SessionTimeout = .minutes(30),
         manualKeepAwake: Bool = false,
-        automationEnabled: Bool = true
+        automationEnabled: Bool = true,
+        keepAwakeWhileWaiting: Bool = false
     ) {
         self.allowOnBattery = allowOnBattery
         self.timeout = timeout
         self.manualKeepAwake = manualKeepAwake
         self.automationEnabled = automationEnabled
+        self.keepAwakeWhileWaiting = keepAwakeWhileWaiting
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case allowOnBattery
+        case timeout
+        case manualKeepAwake
+        case automationEnabled
+        case keepAwakeWhileWaiting
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        allowOnBattery = try container.decodeIfPresent(Bool.self, forKey: .allowOnBattery) ?? false
+        timeout = try container.decodeIfPresent(SessionTimeout.self, forKey: .timeout) ?? .minutes(30)
+        manualKeepAwake = try container.decodeIfPresent(Bool.self, forKey: .manualKeepAwake) ?? false
+        automationEnabled = try container.decodeIfPresent(Bool.self, forKey: .automationEnabled) ?? true
+        // Older settings files predate this flag; default to restoring sleep.
+        keepAwakeWhileWaiting = try container.decodeIfPresent(Bool.self, forKey: .keepAwakeWhileWaiting) ?? false
     }
 
     public static let `default` = CCAwakeSettings()

@@ -10,6 +10,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let powerManager = PowerManager()
     private lazy var sessionStore = ClaudeSessionStore(paths: paths)
     private lazy var settingsStore = SettingsStore(paths: paths)
+    private let hookInstaller = ClaudeSettingsInstaller()
 
     private var statusItem: NSStatusItem?
     private var settings: CCAwakeSettings = .default
@@ -19,6 +20,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var lastLidClosed = false
     private var lastSnapshot = SessionSnapshot(allSessions: [:], activeSessions: [:])
     private var lastOnACPower: Bool?
+    private var hookStatus: ClaudeSettingsInstaller.InstallationStatus = .notInstalled
     private var lastStatusMessage = L10n.string("status.inactive")
     private var transientStatusUntil: Date?
     private var isEvaluating = false
@@ -84,6 +86,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let store = sessionStore
         let timeout = settings.timeout
+        let installer = hookInstaller
 
         // Read the session store and AC power state off the main thread so the
         // 5s timer never blocks the UI on subprocess spawns.
@@ -96,8 +99,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 snapshotResult = .failure(error)
             }
             let onAC = PowerSourceReader.isOnACPower()
+            let hookStatus = installer.installationStatus()
 
             Task { @MainActor in
+                self?.hookStatus = hookStatus
                 self?.applyEvaluation(snapshotResult: snapshotResult, onACPower: onAC)
             }
         }
@@ -117,7 +122,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         lastOnACPower = onACPower
         let onAC = onACPower ?? true
-        let wantsClaudeAwake = settings.automationEnabled && lastSnapshot.hasActiveSessions
+        // Working sessions always justify staying awake. Sessions paused for the
+        // user count only when the user opted into keeping awake while waiting;
+        // otherwise pausing for input restores normal sleep.
+        let hasWorking = lastSnapshot.hasWorkingSessions
+        let hasWaiting = lastSnapshot.hasWaitingSessions
+        let wantsClaudeAwake = settings.automationEnabled
+            && (hasWorking || (hasWaiting && settings.keepAwakeWhileWaiting))
         let wantsAwake = settings.manualKeepAwake || wantsClaudeAwake
         let policyAllowsAwake = settings.allowOnBattery || onAC
         let shouldPreventSleep = wantsAwake && policyAllowsAwake
@@ -131,10 +142,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 lastStatusMessage = L10n.string("status.blockedOnBattery")
             } else if settings.manualKeepAwake {
                 lastStatusMessage = L10n.string("status.manualKeepAwake")
-            } else if wantsClaudeAwake {
-                lastStatusMessage = L10n.string("status.claudeActive")
             } else if !settings.automationEnabled {
                 lastStatusMessage = L10n.string("status.automationPaused")
+            } else if hasWorking {
+                lastStatusMessage = L10n.string("status.claudeActive")
+            } else if hasWaiting {
+                // Paused for the user; show whether we kept awake or let it sleep.
+                lastStatusMessage = settings.keepAwakeWhileWaiting
+                    ? L10n.string("status.waitingKeepAwake")
+                    : L10n.string("status.waitingSleep")
             } else {
                 lastStatusMessage = L10n.string("status.inactive")
             }
@@ -213,6 +229,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             title: settings.manualKeepAwake ? L10n.string("menu.manualOn") : L10n.string("menu.manualOff"),
             action: #selector(toggleManualKeepAwake)
         ))
+        menu.addItem(actionItem(
+            title: settings.keepAwakeWhileWaiting ? L10n.string("menu.keepAwakeWhileWaitingOn") : L10n.string("menu.keepAwakeWhileWaitingOff"),
+            action: #selector(toggleKeepAwakeWhileWaiting)
+        ))
         menu.addItem(actionItem(title: L10n.string("menu.turnOffNow"), action: #selector(turnOffNow)))
 
         menu.addItem(.separator())
@@ -221,8 +241,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(loginItemMenuItem())
 
         menu.addItem(.separator())
-        menu.addItem(actionItem(title: L10n.string("menu.installHooks"), action: #selector(installClaudeHooks)))
-        menu.addItem(actionItem(title: L10n.string("menu.uninstallHooks"), action: #selector(uninstallClaudeHooks)))
+        for item in hookMenuItems() {
+            menu.addItem(item)
+        }
 
         if let helperItem = helperStatusMenuItem() {
             menu.addItem(.separator())
@@ -298,6 +319,39 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return item
     }
 
+    /// Build the Claude hooks section, adapting to whether ccAwake's hooks are
+    /// already installed. A non-clickable status line plus only the relevant
+    /// action(s): install when absent, re-install + uninstall when present, and
+    /// a repair-oriented re-install when partially installed.
+    private func hookMenuItems() -> [NSMenuItem] {
+        let statusKey: String
+        switch hookStatus {
+        case .notInstalled:
+            statusKey = "menu.hooksStatusNotInstalled"
+        case .partial:
+            statusKey = "menu.hooksStatusPartial"
+        case .installed:
+            statusKey = "menu.hooksStatusInstalled"
+        }
+
+        let statusLine = NSMenuItem(title: L10n.string(statusKey), action: nil, keyEquivalent: "")
+        statusLine.isEnabled = false
+        var items: [NSMenuItem] = [statusLine]
+
+        switch hookStatus {
+        case .notInstalled:
+            items.append(actionItem(title: L10n.string("menu.installHooks"), action: #selector(installClaudeHooks)))
+        case .partial:
+            items.append(actionItem(title: L10n.string("menu.repairHooks"), action: #selector(installClaudeHooks)))
+            items.append(actionItem(title: L10n.string("menu.uninstallHooks"), action: #selector(uninstallClaudeHooks)))
+        case .installed:
+            items.append(actionItem(title: L10n.string("menu.reinstallHooks"), action: #selector(installClaudeHooks)))
+            items.append(actionItem(title: L10n.string("menu.uninstallHooks"), action: #selector(uninstallClaudeHooks)))
+        }
+
+        return items
+    }
+
     private func helperStatusMenuItem() -> NSMenuItem? {
         switch helper.state {
         case .enabled:
@@ -330,6 +384,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func toggleManualKeepAwake() {
         transientStatusUntil = nil
         settings.manualKeepAwake.toggle()
+        saveSettingsAndEvaluate()
+    }
+
+    @objc private func toggleKeepAwakeWhileWaiting() {
+        transientStatusUntil = nil
+        settings.keepAwakeWhileWaiting.toggle()
         saveSettingsAndEvaluate()
     }
 
@@ -392,7 +452,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func installClaudeHooks() {
         do {
             let hookPath = try hookExecutablePath()
-            try ClaudeSettingsInstaller().install(hookExecutablePath: hookPath)
+            try hookInstaller.install(hookExecutablePath: hookPath)
+            refreshHookStatus()
         } catch {
             presentError(title: L10n.string("error.installHooks"), error: error)
         }
@@ -400,9 +461,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func uninstallClaudeHooks() {
         do {
-            try ClaudeSettingsInstaller().uninstall()
+            try hookInstaller.uninstall()
+            refreshHookStatus()
         } catch {
             presentError(title: L10n.string("error.uninstallHooks"), error: error)
+        }
+    }
+
+    /// Re-read installation status off the main thread after an install/uninstall
+    /// so the menu reflects the change without waiting for the next 5s tick.
+    private func refreshHookStatus() {
+        let installer = hookInstaller
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            let status = installer.installationStatus()
+            Task { @MainActor in
+                self?.hookStatus = status
+                self?.rebuildMenu()
+            }
         }
     }
 

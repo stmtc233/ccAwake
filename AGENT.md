@@ -27,7 +27,10 @@ Four SwiftPM targets (one library + three executables):
 ### Data flow
 
 1. Claude Code fires lifecycle hooks (`UserPromptSubmit`, `PreToolUse`,
-   `PostToolUse` → `touch`; `Notification`, `Stop`, `SessionEnd` → `release`).
+   `PostToolUse` → `touch`; `Notification` → `waiting`; `Stop`, `SessionEnd` →
+   `release`). `Notification` fires when Claude pauses for the user (permission
+   prompt / error / idle), so the session is marked *waiting* rather than
+   released — `keepAwakeWhileWaiting` then decides whether to stay awake.
 2. Each hook runs `ccawake-hook <action>`, which reads the hook JSON from stdin,
    parses `session_id`, and updates the session store
    (`~/Library/Application Support/ccAwake/sessions.json`) under a file lock.
